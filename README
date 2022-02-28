@@ -1,0 +1,109 @@
+eckmanbrad
+naftali125
+
+
+Attached are two UML diagrams of the Pepse simulator - one written before writing the code,
+and the other written afterwards. Note the diagrams are relatively similar. The original diagram
+served as a helpful framework throughout the coding process, as we were able to reference the diagram
+and implement the classes and methods that we planned. That being said, there are of course some differences:
+(1) A meaningful part of our implementation involves the use of the 'cache' to allow for easy access to
+specific GameObjects. We did not anticipate the use of this in our initial scheme. More on the cache below.
+(2) A handful of public setters used to set the data members of certain objects during runtime - notably
+setters of the cache of the Terrain and Tree class - to record all created objects. As a side note, setting
+the cache of these objects could have been done on creation (through the constructor), but we wanted to stay
+true to the constructors specified in the provided Javadoc, and use them.
+(3) Although not included explicitly in the original UML, we anticipated we'd need to create more additional
+classes than we ultimately did. In retrospect, we can say that our original intuition came from our lack of
+familiarity with lambda functions, which served as an extremely powerful tool in our program design. The
+utilization of the function paradigm, at times, allowed us to minimize the total number of classes as we did
+not have to outsource complex behaviors to a new class.
+
+
+A brief explanation on how the infinite world was implemented:
+We maintain the current left-most and right-most x values at which GameObjects have been created. Using the
+.update() method of PepseGameManager, we validate that the differences between the currently-viewed borders
+and these values are small. If the differences are too large, we create the necessary GameObjects at the
+appropriate bound, while we removes all irrelevant GameObjects from the other.
+This is achieved by leveraging a hash table (a java.util.HashMap) we named 'cache'. The cache maps an x value
+to a list (a java.util.ArrayList) of GameObjects, which are all GameObjects at the x column in the simulator.
+More specifically, we use the cache by grouping GameObjects by the columns they reside in. When traversing the
+world, we dynamically create GameObjects in the columns in the direction of traversal - we make sure to record
+all created objects in the cache. At the same time, we leverage the cache and gain easy access to GameObjects
+that aren't relevant anymore, i.e. those outside of the currently-viewed screen (those in the opposite
+direction of traversal). When an x value is 'far off' of the viewed screen, we delete all of GameObjects
+residing at that x. Using the cache, as opposed to iterating over the entire GameObjectCollection every time
+boosts efficiency.
+How did we ensure the 'consistency' of the infinite world? By 'consistency', we mean the feature that the
+avatar may traverse in any direction and a pseudo-random world is generated - the terrain topology,
+number/location of trees and their shapes, and more. As we've explained, a continuous traversal in some
+direction requires us the erase the objects that are no longer in frame. If the avatar retraces his steps, the
+simulator is able to regenerate the exact details of the world the avatar previously visited.
+Regarding the Terrain, this is achieved by using a fixed mathematical function. The function's parameters are
+defined during runtime and are randomly selected. Once the parameters have been chosen we used the getHeightAt
+function to calculate the height of the terrain at any given x. This is obviously invariant to the fact that
+the x has been visited or not.
+Regarding the Tree object, we create a new Random object at every x. This Random object will ultimately
+dictate all characteristics of the tree at x - whether there will be a tree or not, it's height, bush size,
+density and more. We seed this Random using Object.hash(x, seed) (seed is the initial seed). In this fashion,
+when returning to x after it's information has been erased, the same exact Random object will be created,
+since the seed will be identical. This way all tree details, notably those mentioned above, are consistent.
+All Random objects throughout the program are indirectly initialized by a single seed. This seed is randomly
+selected upon the program's initialization, although to test the described consistency, we a constant that
+that we occasionally modified to generate different worlds). Notable uses of random integers are the random
+selection of variables for the terrain function, and all random aspects of trees. Since Random objects just
+run some mathematical function, the creation of the Randoms in this way ensures an identical world if the seed
+remains unchanged. Every change of the seed produces a brand new, unique world.
+
+
+A delicate part of the code was implementing the trees.
+A large portion of the functionality was implemented using the strategies recommended by the supplied PDF.
+We took a more functional-programming approach and used recursive lambda expressions, where we differentiated
+the transitions needed to be performed by the leaves into 3 distinct parts:
+(1) What we called the 'lifetime cycle' of a leaf - a leaf lives the following cycle:
+        Appear on tree -> fall with lateral movement -> fade out -> repeat
+    We leveraged ScheduledTasks (supplied by th DanoGameLab framework) to execute these different stages in
+    chronological order. The documentation is enhanced for this technical segment of our code.
+(2) The interpolation of the leaf's size, creating the effect of it moving slightly from the wind.
+(3) The interpolation of the leaf's angle, creating the effect of it rotating slightly from the wind.
+The use of ScheduledTasks was crucial in the correct relative timing of executing 3 parts.
+
+
+A few important design dilemmas we faced while coding:
+(1) In our original architecture, we planned on writing a Leaf class. We thought the majority of the
+functionalities that the leaves must satisfy would be implemented within this class, or at least through
+strategies executed by Leaf objects. Once we started implementing, we realized that most of these
+functionalities can be implemented using lambdas and ScheduledTasks within the Tree class. We therefore didn't
+have much justification to implement a whole new Leaf class.
+We proceeded by implementing the leaves on the trees as ordinary Blocks. Towards the end of the project, we
+noticed that the leaf itself must remove it's Transition once colliding with the Terrain. This required us to
+supply a setter and set a private data member, saving this Transition for all Blocks. Moreover, we overrided
+GameObject's OnCollisionEnter (removing the relevant Transition), where in reality we only needed to do so for
+leaves. We noticed upon review that this is bad design, and decided to differentiate between Leafs and
+regular Blocks. Leaf inherits from Block and notably overrides OnCollisionEnter, removing the relevant
+Transition.
+(2) Initially reviewing the project specification and the requirement to implement the infinite world feature,
+we both were reminded of the Memento design pattern. We (somewhat vaguely) envisioned a mechanism responsible
+for saving and restoring previous states of the game. Upon coding, we quickly realised a better and more
+simple implementation was indeed through the use of a hash table of the mapping:
+        x -----> [obj1, obj2, ..., objn]
+where the object list is all GameObjects located at x. We nicknamed this 'cache' and the implementation was
+through the use of java.util's HashMap and ArrayList, respectively.
+(3) The implementation of the leaves was done using a more functional-approach, leveraging lambdas,
+Transitions, and ScheduledTasks. We honestly were drawn to this paradigm as opposed to it's object-based
+alternatives (by using strategies, for example) mainly by the guidance of the supplied PDF. It was easy to get
+the hang of and we ended up feeling this was the right decision.
+
+
+Other notes:
+(1) For the random-looking Terrain we used a combination of sin functions who take on irrational values. Upon
+researching this topic we learned that functions of this sort coincide (to a certain extent) with the notion
+of a perlin noise function in a 2-dimensional world. It is mathematically proven that a function of this
+sort is never periodic - see this post for reference:
+    https://stackoverflow.com/questions/8798771/perlin-noise-for-1d/18959263
+or check out this playground on geogebra to see how the function changes with different variables:
+    https://www.geogebra.org/graphing/yzgxvd8q
+(2) The world may be customized. All customizable parameters appear as constants at the beginning of the
+relevant classes and are named accordingly. Some parameters include the number of tress within the world, the
+size and densities of the leaves on trees, and more.
+(3) We submitted pdf versions of the UMLs which seem to be easier to read. The png's are included to pass the
+presubmission tests.
